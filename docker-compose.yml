@@ -1,5 +1,5 @@
 # =============================================================================
-# docker-compose.yml - Local Development Environment
+# docker-compose.yml - Scribber Local Development Environment
 # =============================================================================
 # Usage:
 #   Start all:        docker compose up -d
@@ -14,7 +14,7 @@ services:
   # ---------------------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
-    container_name: template-postgres
+    container_name: scribber-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-appuser}
@@ -32,6 +32,23 @@ services:
       start_period: 10s
 
   # ---------------------------------------------------------------------------
+  # Redis (for Celery background tasks)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: scribber-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
   # Backend API (FastAPI)
   # ---------------------------------------------------------------------------
   backend:
@@ -39,20 +56,62 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: development
-    container_name: template-backend
+    container_name: scribber-backend
     restart: unless-stopped
     environment:
       - ENVIRONMENT=development
       - DEBUG=true
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-appuser}:${POSTGRES_PASSWORD:-devpassword}@postgres:5432/${POSTGRES_DB:-app_db}
       - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - REDIS_URL=redis://redis:6379/0
+      - UPLOAD_DIR=/app/uploads
       - CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost
+      # AI API Keys
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-}
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - upload_data:/app/uploads
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Celery Worker (Background Tasks)
+  # ---------------------------------------------------------------------------
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: scribber-celery-worker
+    restart: unless-stopped
+    command: celery -A app.worker worker --loglevel=info --concurrency=2
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-appuser}:${POSTGRES_PASSWORD:-devpassword}@postgres:5432/${POSTGRES_DB:-app_db}
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-production}
+      - REDIS_URL=redis://redis:6379/0
+      - UPLOAD_DIR=/app/uploads
+      # AI API Keys
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-}
+    volumes:
+      - ./backend:/app
+      - upload_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   # ---------------------------------------------------------------------------
@@ -63,7 +122,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       target: development
-    container_name: template-frontend
+    container_name: scribber-frontend
     restart: unless-stopped
     environment:
       - VITE_API_BASE_URL=http://localhost:8000/api/v1
@@ -80,7 +139,7 @@ services:
   # ---------------------------------------------------------------------------
   pgadmin:
     image: dpage/pgadmin4:latest
-    container_name: template-pgadmin
+    container_name: scribber-pgadmin
     restart: unless-stopped
     profiles:
       - tools
@@ -96,30 +155,33 @@ services:
       - postgres
 
   # ---------------------------------------------------------------------------
-  # Redis (optional - for caching/sessions)
+  # Flower (Celery monitoring - optional)
   # ---------------------------------------------------------------------------
-  redis:
-    image: redis:7-alpine
-    container_name: template-redis
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: scribber-flower
     restart: unless-stopped
     profiles:
-      - cache
+      - tools
+    command: celery -A app.worker flower --port=5555
+    environment:
+      - REDIS_URL=redis://redis:6379/0
     ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - "5555:5555"
+    depends_on:
+      - redis
+      - celery-worker
 
 volumes:
   postgres_data:
+  redis_data:
+  upload_data:
   frontend_node_modules:
   pgadmin_data:
-  redis_data:
 
 networks:
   default:
-    name: template-network
+    name: scribber-network

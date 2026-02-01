@@ -2,10 +2,11 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 
 import Layout from './components/Layout'
-import HomePage from './pages/HomePage'
-import ItemsPage from './pages/ItemsPage'
+import DashboardPage from './pages/DashboardPage'
+import AdminPage from './pages/AdminPage'
 import SignInPage from './pages/SignInPage'
 import SignUpPage from './pages/SignUpPage'
+import GoogleDriveCallbackPage from './pages/GoogleDriveCallbackPage'
 
 // Protected route wrapper
 function ProtectedRoute({ children }) {
@@ -77,9 +78,19 @@ function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<HomePage />} />
-        <Route path="items" element={<ItemsPage />} />
+        <Route index element={<DashboardPage />} />
+        <Route path="admin" element={<AdminPage />} />
       </Route>
+
+      {/* OAuth callbacks (protected) */}
+      <Route
+        path="/oauth/google-drive/callback"
+        element={
+          <ProtectedRoute>
+            <GoogleDriveCallbackPage />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Catch all */}
       <Route path="*" element={<Navigate to="/" replace />} />

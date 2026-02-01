@@ -2,9 +2,9 @@
 Authentication endpoints - Self-hosted auth with JWT tokens.
 
 Provides user registration, login, and session management with JWT tokens.
-Passwords are hashed using bcrypt for security.
+Passwords are hashed using bcrypt for security. Uses database storage.
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,8 +12,12 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.database import get_db
+from app.models.user import User as UserModel
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -29,7 +33,7 @@ ACCESS_TOKEN_EXPIRE_HOURS = 24
 
 
 # =============================================================================
-# Models
+# Pydantic Models
 # =============================================================================
 
 
@@ -98,15 +102,18 @@ class UserResponse(BaseModel):
     id: int = Field(..., description="Unique user identifier", examples=[1])
     email: str = Field(..., description="User email address", examples=["john.doe@example.com"])
     name: str | None = Field(None, description="User display name", examples=["John Doe"])
+    is_admin: bool = Field(default=False, description="Whether user has admin privileges")
     created_at: datetime = Field(..., description="Account creation timestamp")
 
     model_config = {
+        "from_attributes": True,
         "json_schema_extra": {
             "examples": [
                 {
                     "id": 1,
                     "email": "john.doe@example.com",
                     "name": "John Doe",
+                    "is_admin": False,
                     "created_at": "2024-01-30T12:00:00",
                 }
             ]
@@ -132,12 +139,13 @@ class AuthResponse(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
-                    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJqb2huLmRvZUBleGFtcGxlLmNvbSIsImV4cCI6MTcwNjcyNDAwMH0...",
+                    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                     "token_type": "bearer",
                     "user": {
                         "id": 1,
                         "email": "john.doe@example.com",
                         "name": "John Doe",
+                        "is_admin": False,
                         "created_at": "2024-01-30T12:00:00",
                     },
                 }
@@ -146,46 +154,50 @@ class AuthResponse(BaseModel):
     }
 
 
-class User(BaseModel):
-    """Internal user model."""
-
-    id: int
-    email: str
-    name: str | None
-    hashed_password: str
-    created_at: datetime
-
-
 # =============================================================================
-# In-memory user storage (replace with database in production)
+# Database Operations
 # =============================================================================
 
-_users_db: dict[str, User] = {}
-_next_user_id = 1
+
+async def get_user_by_email(db: AsyncSession, email: str) -> UserModel | None:
+    """Get user by email from database."""
+    result = await db.execute(
+        select(UserModel).where(UserModel.email == email.lower())
+    )
+    return result.scalar_one_or_none()
 
 
-def get_user_by_email(email: str) -> User | None:
-    """Get user by email."""
-    return _users_db.get(email.lower())
+async def get_user_by_id(db: AsyncSession, user_id: int) -> UserModel | None:
+    """Get user by ID from database."""
+    result = await db.execute(
+        select(UserModel).where(UserModel.id == user_id)
+    )
+    return result.scalar_one_or_none()
 
 
-def create_user(email: str, password: str, name: str | None = None) -> User:
-    """Create a new user."""
-    global _next_user_id
-
-    if get_user_by_email(email):
+async def create_user_db(
+    db: AsyncSession,
+    email: str,
+    password: str,
+    name: str | None = None
+) -> UserModel:
+    """Create a new user in the database."""
+    # Check if user already exists
+    existing = await get_user_by_email(db, email)
+    if existing:
         raise ValueError("User already exists")
 
     hashed_password = pwd_context.hash(password)
-    user = User(
-        id=_next_user_id,
+    user = UserModel(
         email=email.lower(),
         name=name,
         hashed_password=hashed_password,
-        created_at=datetime.utcnow(),
+        is_admin=False,
+        is_active=True,
     )
-    _users_db[email.lower()] = user
-    _next_user_id += 1
+    db.add(user)
+    await db.flush()
+    await db.refresh(user)
     return user
 
 
@@ -197,7 +209,7 @@ def create_user(email: str, password: str, name: str | None = None) -> User:
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create a JWT access token."""
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS))
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
 
@@ -207,17 +219,22 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def authenticate_user(email: str, password: str) -> User | None:
+async def authenticate_user(db: AsyncSession, email: str, password: str) -> UserModel | None:
     """Authenticate a user by email and password."""
-    user = get_user_by_email(email)
+    user = await get_user_by_email(db, email)
     if not user:
         return None
     if not verify_password(password, user.hashed_password):
         return None
+    if not user.is_active:
+        return None
     return user
 
 
-async def get_current_user(token: Annotated[str | None, Depends(oauth2_scheme)]) -> User:
+async def get_current_user(
+    token: Annotated[str | None, Depends(oauth2_scheme)],
+    db: AsyncSession = Depends(get_db)
+) -> UserModel:
     """Get the current authenticated user from the token."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -236,31 +253,47 @@ async def get_current_user(token: Annotated[str | None, Depends(oauth2_scheme)])
     except JWTError:
         raise credentials_exception
 
-    user = get_user_by_email(email)
+    user = await get_user_by_email(db, email)
     if user is None:
+        raise credentials_exception
+    if not user.is_active:
         raise credentials_exception
 
     return user
 
 
 async def get_current_user_optional(
-    token: Annotated[str | None, Depends(oauth2_scheme)]
-) -> User | None:
+    token: Annotated[str | None, Depends(oauth2_scheme)],
+    db: AsyncSession = Depends(get_db)
+) -> UserModel | None:
     """Get the current user if authenticated, otherwise None."""
     if not token:
         return None
     try:
-        return await get_current_user(token)
+        return await get_current_user(token, db)
     except HTTPException:
         return None
 
 
-def user_to_response(user: User) -> UserResponse:
-    """Convert internal user to response model."""
+async def get_current_admin_user(
+    current_user: Annotated[UserModel, Depends(get_current_user)]
+) -> UserModel:
+    """Get the current user and verify they are an admin."""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return current_user
+
+
+def user_to_response(user: UserModel) -> UserResponse:
+    """Convert database user to response model."""
     return UserResponse(
         id=user.id,
         email=user.email,
         name=user.name,
+        is_admin=user.is_admin,
         created_at=user.created_at,
     )
 
@@ -278,27 +311,11 @@ def user_to_response(user: User) -> UserResponse:
     description="Create a new user account with email and password",
     response_description="JWT access token and user information",
     responses={
-        201: {
-            "description": "User successfully registered",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                        "token_type": "bearer",
-                        "user": {
-                            "id": 1,
-                            "email": "john.doe@example.com",
-                            "name": "John Doe",
-                            "created_at": "2024-01-30T12:00:00",
-                        },
-                    }
-                }
-            },
-        },
+        201: {"description": "User successfully registered"},
         400: {"description": "User already exists or invalid data"},
     },
 )
-async def register(user_data: UserCreate):
+async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     """
     Register a new user account.
 
@@ -313,7 +330,7 @@ async def register(user_data: UserCreate):
     **Note:** Email addresses are case-insensitive and stored in lowercase.
     """
     try:
-        user = create_user(user_data.email, user_data.password, user_data.name)
+        user = await create_user_db(db, user_data.email, user_data.password, user_data.name)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -335,27 +352,11 @@ async def register(user_data: UserCreate):
     description="Authenticate with email and password to receive a JWT token",
     response_description="JWT access token and user information",
     responses={
-        200: {
-            "description": "Successfully authenticated",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                        "token_type": "bearer",
-                        "user": {
-                            "id": 1,
-                            "email": "john.doe@example.com",
-                            "name": "John Doe",
-                            "created_at": "2024-01-30T12:00:00",
-                        },
-                    }
-                }
-            },
-        },
+        200: {"description": "Successfully authenticated"},
         401: {"description": "Incorrect email or password"},
     },
 )
-async def login(credentials: UserLogin):
+async def login(credentials: UserLogin, db: AsyncSession = Depends(get_db)):
     """
     Authenticate and receive access token.
 
@@ -369,7 +370,7 @@ async def login(credentials: UserLogin):
 
     **Token Lifetime:** 24 hours from issue time
     """
-    user = authenticate_user(credentials.email, credentials.password)
+    user = await authenticate_user(db, credentials.email, credentials.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -392,23 +393,11 @@ async def login(credentials: UserLogin):
     description="Retrieve the currently authenticated user's information",
     response_description="Current user information",
     responses={
-        200: {
-            "description": "Current user information",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "id": 1,
-                        "email": "john.doe@example.com",
-                        "name": "John Doe",
-                        "created_at": "2024-01-30T12:00:00",
-                    }
-                }
-            },
-        },
+        200: {"description": "Current user information"},
         401: {"description": "Not authenticated or invalid token"},
     },
 )
-async def get_me(current_user: Annotated[User, Depends(get_current_user)]):
+async def get_me(current_user: Annotated[UserModel, Depends(get_current_user)]):
     """
     Get current authenticated user information.
 
@@ -426,36 +415,19 @@ async def get_me(current_user: Annotated[User, Depends(get_current_user)]):
     description="Logout the current user (client-side token removal)",
     response_description="Logout confirmation",
     responses={
-        200: {
-            "description": "Successfully logged out",
-            "content": {
-                "application/json": {
-                    "example": {"message": "Successfully logged out"}
-                }
-            },
-        },
+        200: {"description": "Successfully logged out"},
         401: {"description": "Not authenticated"},
     },
 )
-async def logout(current_user: Annotated[User, Depends(get_current_user)]):
+async def logout(current_user: Annotated[UserModel, Depends(get_current_user)]):
     """
     Logout the current user.
 
     **Note:** With JWT tokens, logout is primarily handled client-side by removing
-    the token from storage. This endpoint confirms the logout intent and can be
-    extended to:
-
-    - Add the token to a server-side blacklist
-    - Invalidate all user sessions
-    - Track last logout timestamp
-    - Trigger cleanup operations
+    the token from storage. This endpoint confirms the logout intent.
 
     **Authentication Required:** Yes (Bearer token)
 
     **Client-side action required:** Delete the stored JWT token after calling this endpoint.
     """
-    # In a production app, you might want to:
-    # - Add the token to a blacklist
-    # - Invalidate all user sessions
-    # - Update last_logout timestamp
     return {"message": "Successfully logged out"}

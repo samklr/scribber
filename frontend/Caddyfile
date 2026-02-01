@@ -1,0 +1,34 @@
+# =============================================================================
+# Caddyfile - Frontend Static File Server
+# =============================================================================
+# Serves the built React application with SPA routing support
+# =============================================================================
+
+:80 {
+    # Serve static files from /srv
+    root * /srv
+
+    # Enable gzip compression
+    encode gzip
+
+    # SPA fallback - serve index.html for all routes not matching a file
+    try_files {path} /index.html
+
+    # Serve files
+    file_server
+
+    # Cache static assets (JS, CSS, images, fonts)
+    @static {
+        path *.js *.css *.png *.jpg *.jpeg *.gif *.ico *.svg *.woff *.woff2 *.ttf *.eot
+    }
+    header @static Cache-Control "public, max-age=31536000, immutable"
+
+    # Don't cache HTML files
+    @html {
+        path *.html
+    }
+    header @html Cache-Control "no-cache, no-store, must-revalidate"
+
+    # Health check endpoint
+    respond /health 200
+}

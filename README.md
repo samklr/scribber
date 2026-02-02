@@ -48,22 +48,83 @@ project-template/
 
 ### Local Development
 
-1. **Copy environment file:**
+#### Prerequisites
+
+- Docker and Docker Compose installed
+- Git
+
+#### Getting Started
+
+1. **Clone and setup:**
    ```bash
+   git clone <repo-url>
+   cd scribber
    cp .env.example .env
    ```
 
-2. **Start services:**
+2. **Start all services:**
    ```bash
    docker compose up -d
    ```
 
 3. **Access the application:**
-   - Frontend: http://localhost:5173 (redirects to sign-in)
+   - Frontend: http://localhost:5173
    - Backend API: http://localhost:8000
    - API Docs: http://localhost:8000/docs
+   - ReDoc: http://localhost:8000/redoc
 
-4. **Create an account** and start using the app!
+4. **Create an account** at the sign-up page and start using the app!
+
+#### Common Development Commands
+
+```bash
+# Start all services in background
+docker compose up -d
+
+# Start with live logs
+docker compose up
+
+# Stop all services
+docker compose down
+
+# Restart all services
+docker compose down && docker compose up -d
+
+# Restart a specific service (e.g., backend)
+docker compose restart backend
+
+# View logs for all services
+docker compose logs -f
+
+# View logs for a specific service
+docker compose logs -f backend
+docker compose logs -f frontend
+
+# Rebuild and restart (after code changes)
+docker compose up -d --build
+
+# Rebuild a specific service
+docker compose up -d --build backend
+
+# Check running containers
+docker compose ps
+
+# Access database shell
+docker compose exec postgres psql -U appuser -d app_db
+
+# Run database migrations
+docker compose exec backend alembic upgrade head
+```
+
+#### Services
+
+| Service | Port | Description |
+|---------|------|-------------|
+| frontend | 5173 | React + Vite dev server |
+| backend | 8000 | FastAPI server |
+| postgres | 5432 | PostgreSQL database |
+| redis | 6379 | Redis cache |
+| celery-worker | - | Background task worker |
 
 ### Single VM Deployment
 

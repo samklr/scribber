@@ -17,9 +17,31 @@ down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# Define enum types
+modelprovider_enum = postgresql.ENUM(
+    'openai', 'anthropic', 'google', 'elevenlabs', 'qwen', 'local',
+    name='modelprovider',
+    create_type=False
+)
+modeltype_enum = postgresql.ENUM(
+    'transcription', 'summarization',
+    name='modeltype',
+    create_type=False
+)
+projectstatus_enum = postgresql.ENUM(
+    'pending', 'uploading', 'transcribing', 'summarizing', 'completed', 'failed',
+    name='projectstatus',
+    create_type=False
+)
+operationtype_enum = postgresql.ENUM(
+    'transcription', 'summarization',
+    name='operationtype',
+    create_type=False
+)
+
 
 def upgrade() -> None:
-    # Create enum types
+    # Create enum types first
     op.execute("CREATE TYPE modelprovider AS ENUM ('openai', 'anthropic', 'google', 'elevenlabs', 'qwen', 'local')")
     op.execute("CREATE TYPE modeltype AS ENUM ('transcription', 'summarization')")
     op.execute("CREATE TYPE projectstatus AS ENUM ('pending', 'uploading', 'transcribing', 'summarizing', 'completed', 'failed')")
@@ -47,8 +69,8 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("name", sa.String(length=100), nullable=False),
         sa.Column("display_name", sa.String(length=255), nullable=False),
-        sa.Column("provider", sa.Enum("openai", "anthropic", "google", "elevenlabs", "qwen", "local", name="modelprovider"), nullable=False),
-        sa.Column("model_type", sa.Enum("transcription", "summarization", name="modeltype"), nullable=False),
+        sa.Column("provider", modelprovider_enum, nullable=False),
+        sa.Column("model_type", modeltype_enum, nullable=False),
         sa.Column("api_endpoint", sa.String(length=500), nullable=True),
         sa.Column("api_key_encrypted", sa.Text(), nullable=True),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),
@@ -78,7 +100,7 @@ def upgrade() -> None:
         sa.Column("summary", sa.Text(), nullable=True),
         sa.Column("transcription_model_id", sa.Integer(), nullable=True),
         sa.Column("summarization_model_id", sa.Integer(), nullable=True),
-        sa.Column("status", sa.Enum("pending", "uploading", "transcribing", "summarizing", "completed", "failed", name="projectstatus"), nullable=False, server_default="pending"),
+        sa.Column("status", projectstatus_enum, nullable=False, server_default="pending"),
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
@@ -98,7 +120,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column("project_id", sa.Integer(), nullable=True),
         sa.Column("model_id", sa.Integer(), nullable=False),
-        sa.Column("operation", sa.Enum("transcription", "summarization", name="operationtype"), nullable=False),
+        sa.Column("operation", operationtype_enum, nullable=False),
         sa.Column("input_size_bytes", sa.Integer(), nullable=True),
         sa.Column("duration_seconds", sa.Float(), nullable=True),
         sa.Column("tokens_used", sa.Integer(), nullable=True),

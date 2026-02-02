@@ -5,12 +5,174 @@
 import { useState, useEffect } from 'react'
 import { useApi } from '../hooks/useApi'
 
+// --- Add Model Modal ---
+
+function AddModelModal({ onClose, onSubmit, loading }) {
+  const [formData, setFormData] = useState({
+    name: '',
+    display_name: '',
+    provider: 'openai',
+    model_type: 'transcription',
+    api_endpoint: '',
+    is_active: true,
+    is_default: false,
+  })
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value,
+    }))
+  }
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    onSubmit(formData)
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>Add New Model</h3>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <form onSubmit={handleSubmit} className="model-form">
+          <div className="form-row">
+            <div className="form-group">
+              <label>Model Name (ID)</label>
+              <input
+                type="text"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                placeholder="e.g., whisper-large-v3"
+                required
+              />
+              <small>Unique identifier for the model</small>
+            </div>
+            <div className="form-group">
+              <label>Display Name</label>
+              <input
+                type="text"
+                name="display_name"
+                value={formData.display_name}
+                onChange={handleChange}
+                placeholder="e.g., Whisper Large V3"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Provider</label>
+              <select name="provider" value={formData.provider} onChange={handleChange}>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="google">Google</option>
+                <option value="elevenlabs">ElevenLabs</option>
+                <option value="qwen">Qwen</option>
+                <option value="local">Local</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Model Type</label>
+              <select name="model_type" value={formData.model_type} onChange={handleChange}>
+                <option value="transcription">Transcription</option>
+                <option value="summarization">Summarization</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>API Endpoint (optional)</label>
+            <input
+              type="text"
+              name="api_endpoint"
+              value={formData.api_endpoint}
+              onChange={handleChange}
+              placeholder="e.g., https://api.openai.com/v1/audio/transcriptions"
+            />
+          </div>
+
+          <div className="form-row checkbox-row">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                name="is_active"
+                checked={formData.is_active}
+                onChange={handleChange}
+              />
+              <span>Active</span>
+            </label>
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                name="is_default"
+                checked={formData.is_default}
+                onChange={handleChange}
+              />
+              <span>Set as Default</span>
+            </label>
+          </div>
+
+          <div className="modal-actions">
+            <button type="button" className="btn-secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="primary-btn" disabled={loading}>
+              {loading ? 'Adding...' : 'Add Model'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// --- Delete Confirmation Modal ---
+
+function DeleteConfirmModal({ model, onClose, onConfirm, loading }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content modal-small" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>Delete Model</h3>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          <p>Are you sure you want to delete <strong>{model.display_name}</strong>?</p>
+          <p className="warning-text">This action cannot be undone.</p>
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="danger-btn"
+            onClick={onConfirm}
+            disabled={loading}
+          >
+            {loading ? 'Deleting...' : 'Delete Model'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // --- Tab Components ---
 
 function ModelsTab({ api }) {
   const [models, setModels] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(null)
+  const [actionLoading, setActionLoading] = useState(false)
 
   const fetchModels = async () => {
     setLoading(true)
@@ -37,6 +199,42 @@ function ModelsTab({ api }) {
     }
   }
 
+  const handleAddModel = async (formData) => {
+    setActionLoading(true)
+    try {
+      await api.post('/admin/models', formData)
+      setShowAddModal(false)
+      fetchModels()
+    } catch (err) {
+      alert(`Failed to add model: ${err.message}`)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleDeleteModel = async () => {
+    if (!showDeleteModal) return
+    setActionLoading(true)
+    try {
+      await api.del(`/admin/models/${showDeleteModal.id}`)
+      setShowDeleteModal(null)
+      fetchModels()
+    } catch (err) {
+      alert(`Failed to delete model: ${err.message}`)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleSetDefault = async (modelId) => {
+    try {
+      await api.put(`/admin/models/${modelId}`, { is_default: true })
+      fetchModels()
+    } catch (err) {
+      alert(`Failed to set default: ${err.message}`)
+    }
+  }
+
   const filteredModels = models.filter(m => {
     if (filter === 'all') return true
     return m.model_type === filter
@@ -46,24 +244,29 @@ function ModelsTab({ api }) {
     <div className="admin-section">
       <div className="section-header">
         <h2>AI Models</h2>
-        <div className="filter-tabs">
-          <button
-            className={`filter-tab ${filter === 'all' ? 'active' : ''}`}
-            onClick={() => setFilter('all')}
-          >
-            All
-          </button>
-          <button
-            className={`filter-tab ${filter === 'transcription' ? 'active' : ''}`}
-            onClick={() => setFilter('transcription')}
-          >
-            Transcription
-          </button>
-          <button
-            className={`filter-tab ${filter === 'summarization' ? 'active' : ''}`}
-            onClick={() => setFilter('summarization')}
-          >
-            Summarization
+        <div className="header-actions">
+          <div className="filter-tabs">
+            <button
+              className={`filter-tab ${filter === 'all' ? 'active' : ''}`}
+              onClick={() => setFilter('all')}
+            >
+              All
+            </button>
+            <button
+              className={`filter-tab ${filter === 'transcription' ? 'active' : ''}`}
+              onClick={() => setFilter('transcription')}
+            >
+              Transcription
+            </button>
+            <button
+              className={`filter-tab ${filter === 'summarization' ? 'active' : ''}`}
+              onClick={() => setFilter('summarization')}
+            >
+              Summarization
+            </button>
+          </div>
+          <button className="primary-btn add-model-btn" onClick={() => setShowAddModal(true)}>
+            + Add Model
           </button>
         </div>
       </div>
@@ -104,20 +307,61 @@ function ModelsTab({ api }) {
                   </span>
                 </td>
                 <td>
-                  {model.is_default && <span className="default-badge">Default</span>}
+                  {model.is_default ? (
+                    <span className="default-badge">Default</span>
+                  ) : (
+                    <button
+                      className="small-link-btn"
+                      onClick={() => handleSetDefault(model.id)}
+                      title="Set as default"
+                    >
+                      Set default
+                    </button>
+                  )}
                 </td>
                 <td>
-                  <button
-                    className={`toggle-btn ${model.is_active ? 'deactivate' : 'activate'}`}
-                    onClick={() => handleToggle(model.id)}
-                  >
-                    {model.is_active ? 'Deactivate' : 'Activate'}
-                  </button>
+                  <div className="action-buttons">
+                    <button
+                      className={`toggle-btn ${model.is_active ? 'deactivate' : 'activate'}`}
+                      onClick={() => handleToggle(model.id)}
+                    >
+                      {model.is_active ? 'Disable' : 'Enable'}
+                    </button>
+                    <button
+                      className="small-btn danger"
+                      onClick={() => setShowDeleteModal(model)}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+
+      {filteredModels.length === 0 && !loading && (
+        <div className="empty-state">
+          <p>No models found. Add your first model to get started.</p>
+        </div>
+      )}
+
+      {showAddModal && (
+        <AddModelModal
+          onClose={() => setShowAddModal(false)}
+          onSubmit={handleAddModel}
+          loading={actionLoading}
+        />
+      )}
+
+      {showDeleteModal && (
+        <DeleteConfirmModal
+          model={showDeleteModal}
+          onClose={() => setShowDeleteModal(null)}
+          onConfirm={handleDeleteModel}
+          loading={actionLoading}
+        />
       )}
     </div>
   )

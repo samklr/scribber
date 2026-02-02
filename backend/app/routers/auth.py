@@ -7,10 +7,10 @@ Passwords are hashed using bcrypt for security. Uses database storage.
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
+import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,9 +20,6 @@ from app.database import get_db
 from app.models.user import User as UserModel
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
@@ -187,7 +184,7 @@ async def create_user_db(
     if existing:
         raise ValueError("User already exists")
 
-    hashed_password = pwd_context.hash(password)
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     user = UserModel(
         email=email.lower(),
         name=name,
@@ -216,7 +213,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
 
 async def authenticate_user(db: AsyncSession, email: str, password: str) -> UserModel | None:

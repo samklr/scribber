@@ -1,10 +1,13 @@
 """
 OpenAI GPT summarization service.
 """
+import logging
 from openai import OpenAI
 
 from app.config import settings
 from app.services.summarization.base import SummarizationService, SummaryResult
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAISummarizationService(SummarizationService):
@@ -60,6 +63,8 @@ class OpenAISummarizationService(SummarizationService):
             prompt += f"\n\nKeep the summary under {max_length} words."
 
         # Call OpenAI API
+        logger.info(f"Calling OpenAI GPT API with model: {self.model}")
+        logger.info(f"Text length: {len(text)} chars, style: {style}")
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -77,6 +82,7 @@ class OpenAISummarizationService(SummarizationService):
         # Extract summary
         summary = response.choices[0].message.content.strip()
         tokens_used = response.usage.total_tokens if response.usage else None
+        logger.info(f"OpenAI GPT API call completed. Tokens used: {tokens_used}")
 
         return SummaryResult(
             summary=summary,

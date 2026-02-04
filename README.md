@@ -1,137 +1,319 @@
-# Project Template
+# Scribber
 
-A production-ready template for deploying FastAPI + React applications using Docker with self-hosted authentication.
+**Scribber** is a professional audio transcription and summarization application that supports multiple AI providers. Upload or record audio, transcribe it using your choice of speech-to-text models, and generate intelligent summaries with leading LLMs.
+
+## Screenshots
+
+### Main Dashboard
+Upload or record audio, select your preferred AI models, and get transcriptions with summaries.
+
+![Main Dashboard](docs/img/sbribe_1.png)
+
+### Admin Dashboard - Usage Analytics
+Monitor usage statistics, costs, activity trends, and top users.
+
+![Admin Usage Dashboard](docs/img/scribe_2.png)
+
+### Admin Dashboard - Model Management
+Configure and manage transcription and summarization AI models.
+
+![Admin Models Dashboard](docs/img/scribe_3.png)
+
+### Admin Dashboard - User Management
+Manage users, roles, and permissions.
+
+![Admin Users Dashboard](docs/img/scribe_4.png)
+
+## Features
+
+- **Multi-Provider Transcription**: Choose from multiple speech-to-text engines:
+  - OpenAI Whisper (Large V3)
+  - Google Cloud Speech-to-Text V1 & V2 (Chirp)
+  - ElevenLabs Scribe
+  - Qwen Audio
+
+- **AI-Powered Summarization**: Generate summaries using:
+  - Anthropic Claude (Sonnet, Opus)
+  - OpenAI GPT-4o / GPT-4o-mini
+  - Google Vertex AI (Gemini 1.5 Flash/Pro)
+
+- **Flexible Audio Input**:
+  - Drag-and-drop file upload
+  - Browser-based audio recording
+  - Supports MP3, WAV, M4A, WebM, OGG, FLAC, MP4
+
+- **Real-Time Processing**: WebSocket-based status updates during transcription and summarization
+
+- **Export Options**: Send results to Google Drive, Email, or WhatsApp
+
+- **Admin Dashboard**: Manage AI models, users, and monitor usage statistics
+
+## Architecture
+
+| Component | Technology |
+|-----------|------------|
+| Backend | FastAPI (Python 3.12) + SQLAlchemy Async |
+| Frontend | React 18 + Vite |
+| Database | PostgreSQL 16 |
+| Task Queue | Celery + Redis |
+| Real-time | WebSockets |
+| Proxy | Caddy (auto SSL) |
 
 ## Project Structure
 
 ```
-project-template/
-├── backend/                    # FastAPI backend
+scribber/
+├── backend/
 │   ├── app/
-│   │   ├── main.py            # Application entry point
-│   │   ├── config.py          # Configuration management
-│   │   └── routers/
-│   │       ├── auth.py        # Authentication endpoints
-│   │       ├── health.py      # Health checks
-│   │       └── items.py       # Example CRUD
-│   ├── Dockerfile             # Multi-stage Docker build
-│   └── requirements.txt       # Python dependencies
+│   │   ├── main.py                 # FastAPI application
+│   │   ├── config.py               # Settings management
+│   │   ├── database.py             # Async SQLAlchemy setup
+│   │   ├── worker.py               # Celery worker
+│   │   ├── models/                 # Database models
+│   │   │   ├── user.py             # User with admin role
+│   │   │   ├── project.py          # Audio projects
+│   │   │   ├── model_config.py     # AI model configurations
+│   │   │   └── usage_log.py        # Usage tracking
+│   │   ├── routers/
+│   │   │   ├── auth.py             # Authentication (JWT)
+│   │   │   ├── projects.py         # Project CRUD + transcribe/summarize
+│   │   │   ├── models.py           # List available AI models
+│   │   │   ├── export.py           # Export to Drive/Email
+│   │   │   ├── websocket.py        # Real-time updates
+│   │   │   └── admin/              # Admin endpoints
+│   │   ├── services/
+│   │   │   ├── storage.py          # File storage service
+│   │   │   ├── google_auth.py      # Google Cloud authentication
+│   │   │   ├── transcription/      # STT providers
+│   │   │   │   ├── whisper.py      # OpenAI Whisper
+│   │   │   │   ├── google_stt.py   # Google STT V1
+│   │   │   │   ├── google_stt_v2.py # Google STT V2 (Chirp)
+│   │   │   │   ├── elevenlabs.py   # ElevenLabs Scribe
+│   │   │   │   └── qwen.py         # Qwen Audio
+│   │   │   ├── summarization/      # LLM providers
+│   │   │   │   ├── anthropic_service.py # Claude
+│   │   │   │   ├── openai_service.py    # GPT-4
+│   │   │   │   └── vertex_service.py    # Gemini
+│   │   │   └── export/             # Export services
+│   │   └── tasks/                  # Celery background tasks
+│   ├── alembic/                    # Database migrations
+│   ├── Dockerfile
+│   └── requirements.txt
 │
-├── frontend/                   # React + Vite frontend
+├── frontend/
 │   ├── src/
-│   │   ├── App.jsx            # Main component with routing
-│   │   ├── context/           # Auth context
-│   │   ├── components/        # Reusable components
-│   │   └── pages/             # Page components
-│   ├── Dockerfile             # Multi-stage Docker build
-│   ├── Caddyfile              # Static file server config
-│   └── package.json           # Node dependencies
+│   │   ├── App.jsx
+│   │   ├── pages/
+│   │   │   ├── DashboardPage.jsx   # Main workspace
+│   │   │   ├── AdminPage.jsx       # Admin dashboard
+│   │   │   ├── SignInPage.jsx
+│   │   │   └── SignUpPage.jsx
+│   │   ├── components/
+│   │   │   ├── AudioRecorder.jsx   # Browser recording
+│   │   │   ├── ProcessingStatus.jsx
+│   │   │   └── Layout.jsx
+│   │   ├── hooks/
+│   │   │   ├── useProjects.js
+│   │   │   ├── useModels.js
+│   │   │   ├── useWebSocket.js
+│   │   │   └── useExport.js
+│   │   └── context/
+│   │       └── AuthContext.jsx
+│   ├── Dockerfile
+│   └── package.json
 │
 ├── infra/
-│   ├── single-vm/             # Single VM deployment
-│   │   ├── docker-compose.yml # Production stack
-│   │   ├── caddy/             # Reverse proxy config
-│   │   └── scripts/           # Management scripts
-│   │       ├── deploy.sh      # Automated deployment
-│   │       ├── manage.sh      # Service management
-│   │       └── status.sh      # Health monitoring
-│   │
-│   └── cloud/                 # Cloud infrastructure (Terraform)
-│       ├── main.tf
-│       └── variables.tf
+│   └── single-vm/                  # Production deployment
+│       ├── docker-compose.yml
+│       ├── caddy/Caddyfile
+│       └── scripts/
 │
-├── docker-compose.yml         # Local development
-└── .env.example               # Environment template
+├── docker-compose.yml              # Local development
+├── .env.example
+└── README.md
 ```
 
 ## Quick Start
 
+### Prerequisites
+
+- Docker and Docker Compose
+- API keys for at least one transcription and one summarization provider
+
 ### Local Development
 
-#### Prerequisites
-
-- Docker and Docker Compose installed
-- Git
-
-#### Getting Started
-
-1. **Clone and setup:**
+1. **Clone and configure:**
    ```bash
    git clone <repo-url>
    cd scribber
    cp .env.example .env
    ```
 
-2. **Start all services:**
+2. **Edit `.env` with your API keys:**
+   ```bash
+   # Required: At least one transcription provider
+   OPENAI_API_KEY=sk-...           # For Whisper
+   ELEVENLABS_API_KEY=sk_...       # For ElevenLabs Scribe
+
+   # Required: At least one summarization provider
+   ANTHROPIC_API_KEY=sk-ant-...    # For Claude
+
+   # Optional: Google Cloud (for Chirp and Gemini)
+   GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
+   GOOGLE_CLOUD_PROJECT=your-project-id
+   VERTEX_AI_LOCATION=europe-west4
+   GOOGLE_STT_LOCATION=europe-west4
+   ```
+
+3. **Start all services:**
    ```bash
    docker compose up -d
    ```
 
-3. **Access the application:**
+4. **Run database migrations:**
+   ```bash
+   docker compose exec backend alembic upgrade head
+   ```
+
+5. **Access the application:**
    - Frontend: http://localhost:5173
    - Backend API: http://localhost:8000
    - API Docs: http://localhost:8000/docs
-   - ReDoc: http://localhost:8000/redoc
 
-4. **Create an account** at the sign-up page and start using the app!
+6. **Create an account** and start transcribing!
 
-#### Common Development Commands
+### Development Commands
 
 ```bash
-# Start all services in background
+# Start all services
 docker compose up -d
 
-# Start with live logs
-docker compose up
+# View logs
+docker compose logs -f
+docker compose logs -f celery-worker    # Background tasks
+docker compose logs -f backend          # API server
+
+# Restart after code changes
+docker compose restart backend celery-worker
+
+# Rebuild containers
+docker compose up -d --build
 
 # Stop all services
 docker compose down
 
-# Restart all services
-docker compose down && docker compose up -d
-
-# Restart a specific service (e.g., backend)
-docker compose restart backend
-
-# View logs for all services
-docker compose logs -f
-
-# View logs for a specific service
-docker compose logs -f backend
-docker compose logs -f frontend
-
-# Rebuild and restart (after code changes)
-docker compose up -d --build
-
-# Rebuild a specific service
-docker compose up -d --build backend
-
-# Check running containers
-docker compose ps
-
-# Access database shell
+# Database operations
+docker compose exec backend alembic upgrade head     # Run migrations
+docker compose exec backend alembic revision -m "description" --autogenerate
 docker compose exec postgres psql -U appuser -d app_db
 
-# Run database migrations
-docker compose exec backend alembic upgrade head
+# Optional tools (pgAdmin, Flower)
+docker compose --profile tools up -d
 ```
 
-#### Services
+### Services
 
 | Service | Port | Description |
 |---------|------|-------------|
-| frontend | 5173 | React + Vite dev server |
+| frontend | 5173 | React dashboard |
 | backend | 8000 | FastAPI server |
 | postgres | 5432 | PostgreSQL database |
-| redis | 6379 | Redis cache |
-| celery-worker | - | Background task worker |
+| redis | 6379 | Celery message broker |
+| celery-worker | - | Background task processor |
+| pgadmin | 5050 | Database admin (profile: tools) |
+| flower | 5555 | Celery monitoring (profile: tools) |
+
+## API Endpoints
+
+### Projects
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/projects` | GET | List user's projects |
+| `/api/v1/projects` | POST | Create project (upload audio) |
+| `/api/v1/projects/{id}` | GET | Get project details |
+| `/api/v1/projects/{id}` | PUT | Update project |
+| `/api/v1/projects/{id}` | DELETE | Delete project |
+| `/api/v1/projects/{id}/transcribe` | POST | Start transcription |
+| `/api/v1/projects/{id}/summarize` | POST | Generate summary |
+| `/api/v1/projects/{id}/status` | GET | Get processing status |
+
+### Models
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/models` | GET | List active AI models |
+| `/api/v1/models/transcription` | GET | List transcription models |
+| `/api/v1/models/summarization` | GET | List summarization models |
+
+### Export
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/export/google-drive` | POST | Export to Google Drive |
+| `/api/v1/export/email` | POST | Send via email |
+
+### Admin (requires admin role)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/admin/models` | GET/POST | Manage AI models |
+| `/api/v1/admin/users` | GET | List users |
+| `/api/v1/admin/usage` | GET | Usage statistics |
+
+### WebSocket
+| Endpoint | Description |
+|----------|-------------|
+| `/api/v1/ws/projects/{id}` | Real-time project status updates |
+
+## Environment Variables
+
+### Required
+| Variable | Description |
+|----------|-------------|
+| `SECRET_KEY` | JWT signing key (`openssl rand -base64 64`) |
+| `POSTGRES_PASSWORD` | Database password |
+
+### AI Providers (configure at least one of each type)
+
+**Transcription:**
+| Variable | Provider |
+|----------|----------|
+| `OPENAI_API_KEY` | OpenAI Whisper |
+| `ELEVENLABS_API_KEY` | ElevenLabs Scribe |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Google Cloud STT |
+
+**Summarization:**
+| Variable | Provider |
+|----------|----------|
+| `ANTHROPIC_API_KEY` | Claude |
+| `OPENAI_API_KEY` | GPT-4 |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Gemini (Vertex AI) |
+
+### Google Cloud Configuration
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GOOGLE_CLOUD_PROJECT` | - | GCP project ID |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | - | Service account JSON |
+| `VERTEX_AI_LOCATION` | `us-central1` | Gemini region |
+| `GOOGLE_STT_LOCATION` | `europe-west4` | Chirp region* |
+
+*Chirp models available in: `us-central1`, `europe-west4`, `asia-southeast1`
+
+### Application
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENVIRONMENT` | `development` | Environment mode |
+| `DEBUG` | `false` | Debug mode |
+| `UPLOAD_DIR` | `/app/uploads` | Audio storage path |
+| `MAX_UPLOAD_SIZE_MB` | `500` | Max file size |
+| `CORS_ALLOWED_ORIGINS` | `localhost:5173` | CORS origins |
+
+## Production Deployment
 
 ### Single VM Deployment
 
-1. **SSH to your VM and clone the repository:**
+1. **SSH to your VM:**
    ```bash
+   ssh user@your-vm-ip
    git clone <repo-url>
-   cd project-template
+   cd scribber
    ```
 
 2. **Install Docker (if needed):**
@@ -143,7 +325,7 @@ docker compose exec backend alembic upgrade head
    ```bash
    cd infra/single-vm
    cp .env.example .env
-   nano .env  # Edit with your settings
+   nano .env  # Add your API keys and settings
    ```
 
 4. **Deploy:**
@@ -151,202 +333,37 @@ docker compose exec backend alembic upgrade head
    ./scripts/deploy.sh
    ```
 
-5. **Manage services:**
+5. **Management commands:**
    ```bash
-   ./scripts/manage.sh status    # Check status
-   ./scripts/manage.sh logs      # View logs
-   ./scripts/manage.sh health    # Health check
-   ./scripts/manage.sh backup    # Backup database
+   ./scripts/manage.sh status     # Check status
+   ./scripts/manage.sh logs       # View logs
+   ./scripts/manage.sh health     # Health check
+   ./scripts/manage.sh backup     # Backup database
+   ./scripts/manage.sh update     # Pull and redeploy
    ```
 
-## Features
+## Supported AI Models
 
-### Backend (FastAPI)
-- **Self-hosted authentication** with JWT tokens and bcrypt password hashing
-- **Comprehensive OpenAPI documentation** with Swagger UI and ReDoc
-- **Interactive API testing** directly from the browser
-- Health check endpoints (`/health/live`, `/health/ready`)
-- CORS configuration via environment
-- Pydantic settings management
-- Multi-stage Docker build (development/production)
+### Transcription Models
 
-### Frontend (React + Vite)
-- Modern React 18 with hooks
-- **Built-in authentication** (sign-in, sign-up, protected routes)
-- React Router for navigation
-- Auth context for state management
-- Vite for fast development
-- Multi-stage Docker build with Caddy
+| Provider | Model | Notes |
+|----------|-------|-------|
+| OpenAI | Whisper Large V3 | Best overall accuracy |
+| Google | Chirp (V2) | Low word error rate, requires `europe-west4` or `us-central1` |
+| Google | Speech-to-Text V1 | Legacy, broader language support |
+| ElevenLabs | Scribe V1/V2 | Fast processing |
+| Qwen | Qwen Audio | Multilingual support |
 
-### Infrastructure
-- **Caddy** reverse proxy with automatic SSL
-- **PostgreSQL** database with health checks
-- Profile-based Docker Compose (local-db, tools, cache)
-- Comprehensive management scripts
+### Summarization Models
 
-## API Documentation
-
-The template includes **professional-grade API documentation** powered by FastAPI's automatic OpenAPI generation:
-
-### Swagger UI (`/docs`)
-
-Interactive API documentation with a modern interface:
-
-- **🔐 Built-in authentication testing** - Click the "Authorize" button to add your JWT token
-- **📝 Detailed examples** - Every endpoint includes request/response examples
-- **🎯 Try it out** - Execute API calls directly from your browser
-- **📊 Schema visualization** - Explore request/response models with interactive schemas
-- **🎨 Syntax highlighting** - Code examples with beautiful Monokai theme
-- **🔖 Organized by tags** - Endpoints grouped by functionality (Authentication, Items, Health)
-
-#### How to use Swagger UI:
-
-1. **Start the backend:**
-   ```bash
-   docker compose up -d
-   ```
-
-2. **Open Swagger UI:**
-   - Visit http://localhost:8000/docs
-
-3. **Test authentication:**
-   - Expand `POST /api/v1/auth/register`
-   - Click "Try it out"
-   - Fill in the example data (or customize it)
-   - Click "Execute"
-   - Copy the `access_token` from the response
-
-4. **Authorize:**
-   - Click the "Authorize" button (🔓 icon at the top)
-   - Enter: `Bearer <your_token>` (replace `<your_token>` with your actual token)
-   - Click "Authorize"
-
-5. **Test protected endpoints:**
-   - Try `GET /api/v1/auth/me` to see your user info
-   - All protected endpoints will now use your token automatically!
-
-### ReDoc (`/redoc`)
-
-Alternative documentation view with:
-- Clean, document-style layout
-- Better for reading and reference
-- Printable format
-- Three-panel layout (menu, content, schema)
-
-### OpenAPI Schema (`/openapi.json`)
-
-Raw OpenAPI 3.0 specification in JSON format:
-- Import into Postman, Insomnia, or other API clients
-- Generate client SDKs in any language
-- Use for API testing frameworks
-
-### Documentation Features
-
-✅ **Comprehensive endpoint descriptions** with usage notes  
-✅ **Request/response examples** for every endpoint  
-✅ **Field-level documentation** with constraints and types  
-✅ **Security scheme documentation** for JWT authentication  
-✅ **Error response examples** (400, 401, 404, etc.)  
-✅ **Model schemas** with validation rules  
-✅ **Best practices** and production recommendations  
-
-
-## Authentication
-
-The template includes a complete self-hosted authentication system:
-
-### API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/auth/register` | POST | Create new account |
-| `/api/v1/auth/login` | POST | Sign in and get token |
-| `/api/v1/auth/me` | GET | Get current user (protected) |
-| `/api/v1/auth/logout` | POST | Sign out (protected) |
-
-### Frontend Pages
-
-- `/sign-in` - Login page
-- `/sign-up` - Registration page
-- `/` - Home (protected)
-- `/items` - Items CRUD (protected)
-
-### Using Auth in Components
-
-```jsx
-import { useAuth } from './context/AuthContext'
-
-function MyComponent() {
-  const { user, signIn, signOut, getAuthHeader } = useAuth()
-
-  // Make authenticated API calls
-  const fetchData = async () => {
-    const response = await fetch('/api/v1/protected', {
-      headers: getAuthHeader()
-    })
-  }
-
-  return <div>Hello, {user?.name}!</div>
-}
-```
-
-## Environment Variables
-
-### Required (Production)
-| Variable | Description |
-|----------|-------------|
-| `SECRET_KEY` | JWT signing key (generate with `openssl rand -base64 64`) |
-| `POSTGRES_PASSWORD` | Database password |
-| `DOMAIN_NAME` | Domain for SSL |
-
-### Optional
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DATABASE_MODE` | `local` | `local` or `remote` |
-| `POSTGRES_USER` | `appuser` | Database user |
-| `POSTGRES_DB` | `app_db` | Database name |
-| `CADDY_EMAIL` | `admin@localhost` | SSL cert email |
-
-## Management Commands
-
-```bash
-# Service control
-./manage.sh start           # Start services
-./manage.sh stop            # Stop services
-./manage.sh restart         # Restart all
-./manage.sh update          # Pull, rebuild, restart
-
-# Monitoring
-./manage.sh status          # Container status
-./manage.sh health          # Health checks
-./manage.sh stats           # Resource usage
-./manage.sh logs            # All logs
-./manage.sh logs-backend    # Backend logs
-
-# Database
-./manage.sh backup          # Create backup
-./manage.sh restore         # Restore backup
-./manage.sh shell-db        # PostgreSQL shell
-
-# Maintenance
-./manage.sh clean           # Remove all containers
-```
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Root info |
-| `/health/live` | GET | Liveness probe |
-| `/health/ready` | GET | Readiness probe |
-| `/api/v1/auth/*` | * | Authentication |
-| `/api/v1/items` | GET | List items |
-| `/api/v1/items/{id}` | GET | Get item |
-| `/api/v1/items` | POST | Create item |
-| `/api/v1/items/{id}` | PUT | Update item |
-| `/api/v1/items/{id}` | DELETE | Delete item |
-| `/docs` | GET | Swagger UI |
-| `/redoc` | GET | ReDoc |
+| Provider | Model | Notes |
+|----------|-------|-------|
+| Anthropic | Claude Sonnet 4 | Excellent summarization quality |
+| Anthropic | Claude Opus 4 | Highest quality, slower |
+| OpenAI | GPT-4o | Fast, good quality |
+| OpenAI | GPT-4o-mini | Budget option |
+| Google | Gemini 1.5 Flash | Fast, cost-effective |
+| Google | Gemini 1.5 Pro | Higher quality |
 
 ## Security Notes
 
@@ -355,13 +372,13 @@ function MyComponent() {
    openssl rand -base64 64
    ```
 
-2. **Never commit `.env` files**
+2. **Never commit `.env` files** - they contain API keys
 
-3. **Use HTTPS in production** (Caddy handles this automatically)
+3. **Use HTTPS in production** - Caddy handles this automatically
 
-4. **Rotate secrets regularly**
+4. **Rotate API keys regularly**
 
-5. **Passwords are hashed with bcrypt** - never stored in plain text
+5. **Passwords are hashed with bcrypt**
 
 ## License
 

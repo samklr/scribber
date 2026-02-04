@@ -5,6 +5,9 @@ Provides user registration, login, and session management with JWT tokens.
 Passwords are hashed using bcrypt for security. Uses database storage.
 """
 from datetime import datetime, timedelta, timezone
+import uuid
+import httpx
+import redis.asyncio as redis
 from typing import Annotated
 
 import bcrypt
@@ -12,12 +15,19 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr, Field
+# Imports updated
+import uuid
+import redis.asyncio as redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from redis.asyncio import Redis
 
 from app.config import settings
 from app.database import get_db
 from app.models.user import User as UserModel
+
+# Redis connection
+redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -52,6 +62,10 @@ class UserCreate(BaseModel):
         None,
         description="Optional display name",
         examples=["John Doe"],
+    )
+    captcha_token: str | None = Field(
+        None,
+        description="Google reCAPTCHA v2 token",
     )
 
     model_config = {
@@ -207,6 +221,9 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     """Create a JWT access token."""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS))
+    # Add unique JWT ID (jti)
+    if "jti" not in to_encode:
+        to_encode["jti"] = str(uuid.uuid4())
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
 
@@ -228,6 +245,16 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
     return user
 
 
+async def is_token_blacklisted(jti: str) -> bool:
+    """Check if a token is blacklisted in Redis."""
+    try:
+        is_denied = await redis_client.get(f"blacklist:{jti}")
+        return is_denied is not None
+    except Exception:
+        # Fail open if Redis is down, or log error
+        return False
+
+
 async def get_current_user(
     token: Annotated[str | None, Depends(oauth2_scheme)],
     db: AsyncSession = Depends(get_db)
@@ -245,8 +272,15 @@ async def get_current_user(
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
+        jti: str = payload.get("jti")
+        
         if email is None:
             raise credentials_exception
+            
+        # Check blacklist
+        if jti and await is_token_blacklisted(jti):
+            raise credentials_exception
+            
     except JWTError:
         raise credentials_exception
 
@@ -326,6 +360,23 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
 
     **Note:** Email addresses are case-insensitive and stored in lowercase.
     """
+    # Verify CAPTCHA if enabled/provided
+    if user_data.captcha_token and settings.RECAPTCHA_SECRET_KEY:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://www.google.com/recaptcha/api/siteverify",
+                data={
+                    "secret": settings.RECAPTCHA_SECRET_KEY,
+                    "response": user_data.captcha_token,
+                },
+            )
+            data = response.json()
+            if not data.get("success"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid CAPTCHA",
+                )
+    
     try:
         user = await create_user_db(db, user_data.email, user_data.password, user_data.name)
     except ValueError as e:
@@ -416,15 +467,36 @@ async def get_me(current_user: Annotated[UserModel, Depends(get_current_user)]):
         401: {"description": "Not authenticated"},
     },
 )
-async def logout(current_user: Annotated[UserModel, Depends(get_current_user)]):
+async def logout(
+    current_user: Annotated[UserModel, Depends(get_current_user)],
+    token: Annotated[str, Depends(oauth2_scheme)]
+):
     """
     Logout the current user.
 
     **Note:** With JWT tokens, logout is primarily handled client-side by removing
-    the token from storage. This endpoint confirms the logout intent.
+    the token from storage. This endpoint now adds the token to a server-side blacklist
+    to prevent further use until expiration.
 
     **Authentication Required:** Yes (Bearer token)
 
     **Client-side action required:** Delete the stored JWT token after calling this endpoint.
     """
+    # Calculate remaining time for the token
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+        
+        if jti and exp:
+            now = datetime.now(timezone.utc).timestamp()
+            ttl = int(exp - now)
+            
+            if ttl > 0:
+                # Add to blacklist using Redis
+                await redis_client.setex(f"blacklist:{jti}", ttl, "true")
+                
+    except JWTError:
+        pass # Invalid tokens don't need blacklisting
+        
     return {"message": "Successfully logged out"}

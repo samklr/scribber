@@ -41,12 +41,12 @@ class ModelConfig(Base):
     name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     provider: Mapped[ModelProvider] = mapped_column(
-        Enum(ModelProvider),
+        Enum(ModelProvider, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         index=True
     )
     model_type: Mapped[ModelType] = mapped_column(
-        Enum(ModelType),
+        Enum(ModelType, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         index=True
     )

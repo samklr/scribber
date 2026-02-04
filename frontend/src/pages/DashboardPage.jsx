@@ -283,11 +283,25 @@ function TranscriptionWidget({
             {project.transcription}
           </div>
         ) : project ? (
-          <p className="empty-state">
-            {project.status === 'failed'
-              ? `Error: ${project.error_message || 'Transcription failed'}`
-              : 'No transcription yet. Click "Transcribe" to start.'}
-          </p>
+          <div className="empty-state">
+            {project.status === 'failed' ? (
+              <div className="error-state">
+                <p className="error-text">Error: {project.error_message || 'Transcription failed'}</p>
+                {model && (
+                  <button
+                    className="secondary-btn retry-btn"
+                    onClick={() => onTranscribe(project.id, model.id)}
+                    disabled={loading}
+                    style={{ marginTop: '1rem' }}
+                  >
+                    Retry with {model.display_name}
+                  </button>
+                )}
+              </div>
+            ) : (
+              'No transcription yet. Click "Transcribe" to start.'
+            )}
+          </div>
         ) : (
           <p className="empty-state">Select a project or upload an audio file to get started.</p>
         )}
@@ -382,7 +396,25 @@ function SummaryWidget({
             Click "Summarize" to generate a summary of the transcription.
           </p>
         ) : (
-          <p className="empty-state">Transcribe audio first to generate a summary.</p>
+          <div className="empty-state">
+            {project?.status === 'failed' && project?.transcription ? (
+              <div className="error-state">
+                <p className="error-text">Error: {project.error_message || 'Summarization failed'}</p>
+                {model && (
+                  <button
+                    className="secondary-btn retry-btn"
+                    onClick={() => onSummarize(project.id, model.id)}
+                    disabled={loading}
+                    style={{ marginTop: '1rem' }}
+                  >
+                    Retry with {model.display_name}
+                  </button>
+                )}
+              </div>
+            ) : (
+              'Transcribe audio first to generate a summary.'
+            )}
+          </div>
         )}
       </div>
     </div>

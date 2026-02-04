@@ -1,12 +1,15 @@
 """
 OpenAI Whisper transcription service.
 """
+import logging
 from pathlib import Path
 
 from openai import OpenAI
 
 from app.config import settings
 from app.services.transcription.base import TranscriptionService, TranscriptionResult
+
+logger = logging.getLogger(__name__)
 
 
 class WhisperTranscriptionService(TranscriptionService):
@@ -65,26 +68,41 @@ class WhisperTranscriptionService(TranscriptionService):
             options["prompt"] = kwargs["prompt"]
 
         # Read and send the audio file
+        logger.info(f"Calling OpenAI Whisper API for file: {audio_path}")
+        logger.info(f"Options: {options}")
         with open(audio_path, "rb") as audio_file:
             response = self.client.audio.transcriptions.create(
                 file=audio_file,
                 **options
             )
+        logger.info(f"Whisper API call completed successfully")
 
         # Parse response based on format
         if options["response_format"] == "verbose_json":
+            # Handle segments - can be dicts or objects depending on SDK version
+            segments = None
+            raw_segments = getattr(response, "segments", None)
+            if raw_segments:
+                segments = []
+                for seg in raw_segments:
+                    if isinstance(seg, dict):
+                        segments.append({
+                            "start": seg.get("start"),
+                            "end": seg.get("end"),
+                            "text": seg.get("text"),
+                        })
+                    else:
+                        segments.append({
+                            "start": seg.start,
+                            "end": seg.end,
+                            "text": seg.text,
+                        })
+
             return TranscriptionResult(
                 text=response.text,
                 duration_seconds=getattr(response, "duration", None),
                 language=getattr(response, "language", language),
-                segments=[
-                    {
-                        "start": seg.start,
-                        "end": seg.end,
-                        "text": seg.text,
-                    }
-                    for seg in getattr(response, "segments", [])
-                ] if hasattr(response, "segments") else None,
+                segments=segments,
                 metadata={
                     "model": self.model,
                     "provider": "openai",

@@ -2,7 +2,10 @@
 Transcription processing logic for Celery tasks.
 """
 import asyncio
+import logging
 from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
@@ -40,6 +43,7 @@ async def _process_transcription_async(project_id: int, model_id: int) -> None:
 
     async with async_session() as db:
         try:
+            logger.info(f"Starting transcription for project {project_id} with model {model_id}")
             # Fetch project
             result = await db.execute(
                 select(Project).where(Project.id == project_id)
@@ -74,7 +78,9 @@ async def _process_transcription_async(project_id: int, model_id: int) -> None:
             service = get_transcription_service(model_config)
 
             # Perform transcription
+            logger.info(f"Transcribing file: {audio_path}")
             result = await service.transcribe(audio_path)
+            logger.info(f"Transcription completed. Text length: {len(result.text)}")
 
             # Update project with transcription
             project.transcription = result.text
@@ -97,6 +103,7 @@ async def _process_transcription_async(project_id: int, model_id: int) -> None:
             await db.commit()
 
         except Exception as e:
+            logger.error(f"Transcription failed for project {project_id}: {e}", exc_info=True)
             # Update project with error
             if project:
                 project.status = ProjectStatus.FAILED

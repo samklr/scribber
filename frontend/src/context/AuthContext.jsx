@@ -78,7 +78,7 @@ export function AuthProvider({ children }) {
   }
 
   // Sign up
-  const signUp = async (email, password, name) => {
+  const signUp = async (email, password, name, captchaToken) => {
     setError(null)
     try {
       const response = await fetch(`${API_BASE}/auth/register`, {
@@ -86,7 +86,7 @@ export function AuthProvider({ children }) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password, name }),
+        body: JSON.stringify({ email, password, name, captcha_token: captchaToken }),
       })
 
       const data = await response.json()

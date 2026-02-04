@@ -28,11 +28,10 @@ celery.conf.update(
     task_reject_on_worker_lost=True,
 )
 
-# Configure task routes
-celery.conf.task_routes = {
-    "app.tasks.transcription.*": {"queue": "transcription"},
-    "app.tasks.summarization.*": {"queue": "summarization"},
-}
-
-# Default queue
+# All tasks go to default queue for simplicity
+# In production, you might want to add dedicated queues:
+# celery.conf.task_routes = {
+#     "app.tasks.transcription.*": {"queue": "transcription"},
+#     "app.tasks.summarization.*": {"queue": "summarization"},
+# }
 celery.conf.task_default_queue = "default"

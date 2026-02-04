@@ -1,39 +1,50 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+// import ReCAPTCHA from "react-google-recaptcha"
 import { useAuth } from '../context/AuthContext'
+
+// const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || "your-site-key"
 
 function SignUpPage() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [error, setError] = useState('')
+  const [formError, setFormError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState(null)
   const { signUp } = useAuth()
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setError('')
+    setFormError('')
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match')
+      setFormError('Passwords do not match')
       return
     }
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters')
+      setFormError('Password must be at least 8 characters')
       return
     }
 
+    /*
+    if (!captchaToken) {
+      setFormError('Please complete the CAPTCHA')
+      return
+    }
+    */
+
     setLoading(true)
 
-    const result = await signUp(email, password, name)
+    const result = await signUp(email, password, name, captchaToken)
 
     if (result.success) {
       navigate('/')
     } else {
-      setError(result.error)
+      setFormError(result.error)
     }
 
     setLoading(false)
@@ -48,7 +59,7 @@ function SignUpPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="auth-form">
-          {error && <div className="auth-error">{error}</div>}
+          {formError && <div className="auth-error">{formError}</div>}
 
           <div className="form-group">
             <label htmlFor="name">Name</label>
@@ -102,6 +113,14 @@ function SignUpPage() {
               autoComplete="new-password"
             />
           </div>
+
+          {/* <div className="flex justify-center my-4">
+            <ReCAPTCHA
+              sitekey={RECAPTCHA_SITE_KEY}
+              onChange={setCaptchaToken}
+              theme="light"
+            />
+          </div> */}
 
           <button type="submit" disabled={loading} className="auth-button">
             {loading ? 'Creating account...' : 'Sign Up'}

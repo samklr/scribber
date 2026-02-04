@@ -31,6 +31,7 @@ google-cloud-speech==2.26.0
 
 # AI APIs - Summarization
 anthropic==0.34.0
+google-cloud-aiplatform==1.38.0
 
 # File Storage
 aiofiles==24.1.0

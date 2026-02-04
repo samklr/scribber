@@ -48,7 +48,7 @@ class UsageLog(Base):
         index=True
     )
     operation: Mapped[OperationType] = mapped_column(
-        Enum(OperationType),
+        Enum(OperationType, values_callable=lambda x: [e.value for e in x]),
         nullable=False,
         index=True
     )

@@ -1,10 +1,13 @@
 """
 Anthropic Claude summarization service.
 """
+import logging
 from anthropic import Anthropic
 
 from app.config import settings
 from app.services.summarization.base import SummarizationService, SummaryResult
+
+logger = logging.getLogger(__name__)
 
 
 class AnthropicSummarizationService(SummarizationService):
@@ -13,7 +16,7 @@ class AnthropicSummarizationService(SummarizationService):
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = "claude-3-5-sonnet-20241022",
+        model: str = "claude-sonnet-4-20250514",
         max_tokens: int = 4000,
     ):
         self.api_key = api_key or settings.ANTHROPIC_API_KEY
@@ -58,6 +61,8 @@ class AnthropicSummarizationService(SummarizationService):
             prompt += f"\n\nKeep the summary under {max_length} words."
 
         # Call Anthropic API
+        logger.info(f"Calling Anthropic Claude API with model: {self.model}")
+        logger.info(f"Text length: {len(text)} chars, style: {style}")
         response = self.client.messages.create(
             model=self.model,
             max_tokens=kwargs.get("max_tokens", self.max_tokens),
@@ -72,6 +77,7 @@ class AnthropicSummarizationService(SummarizationService):
         summary = response.content[0].text.strip()
         input_tokens = response.usage.input_tokens
         output_tokens = response.usage.output_tokens
+        logger.info(f"Anthropic Claude API call completed. Tokens: {input_tokens} input, {output_tokens} output")
 
         return SummaryResult(
             summary=summary,

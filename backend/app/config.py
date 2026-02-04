@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     # Security
     SECRET_KEY: str = "change-me-in-production-use-openssl-rand-base64-64"
+    RECAPTCHA_SECRET_KEY: str = ""
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/app_db"
@@ -32,17 +33,24 @@ class Settings(BaseSettings):
     GCS_BUCKET_NAME: str = ""
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
 
+    # Google Cloud / Vertex AI
+    GOOGLE_CLOUD_PROJECT: str = ""
+    GOOGLE_API_KEY: str = ""
+    GOOGLE_SERVICE_ACCOUNT_JSON: str = ""  # JSON content as string (alternative to file)
+    VERTEX_AI_LOCATION: str = "us-central1"
+    # Google Speech-to-Text location (Chirp available in: us-central1, europe-west4, asia-southeast1)
+    GOOGLE_STT_LOCATION: str = "europe-west4"
+
     # Transcription APIs
     OPENAI_API_KEY: str = ""
     ELEVENLABS_API_KEY: str = ""
-    GOOGLE_CLOUD_PROJECT: str = ""
 
     # Summarization APIs
     ANTHROPIC_API_KEY: str = ""
 
     # Default models (can be overridden in database)
     DEFAULT_TRANSCRIPTION_MODEL: str = "whisper-large-v3"
-    DEFAULT_SUMMARIZATION_MODEL: str = "gpt-4o-mini"
+    DEFAULT_SUMMARIZATION_MODEL: str = "claude-3-5-sonnet-20241022"
 
     # Export Services
     SENDGRID_API_KEY: str = ""

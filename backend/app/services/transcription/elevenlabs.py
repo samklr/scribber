@@ -18,17 +18,27 @@ ELEVENLABS_API_BASE = "https://api.elevenlabs.io/v1"
 class ElevenLabsTranscriptionService(TranscriptionService):
     """Eleven Labs transcription service using their speech-to-text API."""
 
+    # Available speech-to-text models
+    MODELS = {
+        "scribe_v1": "scribe_v1",                      # Standard transcription model
+        "scribe_v1_experimental": "scribe_v1_experimental",  # Experimental version
+        "scribe_v2": "scribe_v2",                      # Latest version
+    }
+
     def __init__(
         self,
         api_key: str | None = None,
+        model: str = "scribe_v1",
     ):
         """
         Initialize Eleven Labs transcription service.
 
         Args:
             api_key: Eleven Labs API key
+            model: Model to use (scribe_v1 or turbo)
         """
         self.api_key = api_key or settings.ELEVENLABS_API_KEY
+        self.model_id = self.MODELS.get(model, "scribe_v1")
 
         if not self.api_key:
             raise ValueError("Eleven Labs API key is required")
@@ -74,6 +84,7 @@ class ElevenLabsTranscriptionService(TranscriptionService):
                 audio_data = f.read()
 
             # Make API request
+            logger.info(f"Sending audio to ElevenLabs API ({ELEVENLABS_API_BASE}), model: {self.model_id}...")
             async with httpx.AsyncClient(timeout=300.0) as client:
                 response = await client.post(
                     f"{ELEVENLABS_API_BASE}/speech-to-text",
@@ -81,9 +92,10 @@ class ElevenLabsTranscriptionService(TranscriptionService):
                         "xi-api-key": self.api_key,
                     },
                     files={
-                        "audio": (audio_path.name, audio_data, mime_type),
+                        "file": (audio_path.name, audio_data, mime_type),
                     },
                     data={
+                        "model_id": self.model_id,
                         "language_code": language or "en",
                     },
                 )
@@ -96,7 +108,8 @@ class ElevenLabsTranscriptionService(TranscriptionService):
                     raise RuntimeError(
                         f"Eleven Labs API error: {response.status_code}"
                     )
-
+                
+                logger.info("ElevenLabs API request successful.")
                 result = response.json()
 
             # Extract transcription

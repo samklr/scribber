@@ -68,3 +68,6 @@ infra/single-vm/logs/
 *.pem
 *.key
 secrets/
+credentials/
+**/credentials/
+*.json.bak
